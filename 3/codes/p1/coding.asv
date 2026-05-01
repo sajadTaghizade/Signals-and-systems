@@ -1,0 +1,55 @@
+function encoded_image = coding(message, image, Mapset, blockSize, threshold)
+
+    message_with_terminator = [message, ';'];
+    
+    binary_string = '';
+    for i = 1:length(message_with_terminator)
+        char_to_find = message_with_terminator(i);
+        
+        idx = find(strcmp(Mapset(1, :), char_to_find));
+        
+        if isempty(idx)
+            error('Error: Message contains invalid characters not in Mapset.');
+        end
+        
+        binary_string = [binary_string, Mapset{2, idx}];
+    end
+    
+    num_bits_to_hide = length(binary_string);
+    
+    [rows, cols] = size(image);
+    encoded_image = image;
+    
+    suitable_pixel_indices = [];
+    
+    for r = 1:blockSize:rows-blockSize+1
+        for c = 1:blockSize:cols-blockSize+1
+            
+            block = image(r:r+blockSize-1, c:c+blockSize-1);
+            
+        
+            if var(double(block(:))) > threshold
+                
+                [C_idx, R_idx] = meshgrid(c:c+blockSize-1, r:r+blockSize-1);
+                linear_indices = sub2ind(size(image), R_idx(:), C_idx(:));
+                suitable_pixel_indices = [suitable_pixel_indices; linear_indices];
+            end
+        end
+    end
+    
+    if num_bits_to_hide > length(suitable_pixel_indices)
+        error('Error: Message is too long to be hidden in this image with the current strategy.');
+    end
+    
+    
+    for k = 1:num_bits_to_hide
+        pixel_idx = suitable_pixel_indices(k);
+        
+        bit_to_hide = str2double(binary_string(k));
+        
+        original_pixel_value = encoded_image(pixel_idx);
+        
+        encoded_image(pixel_idx) = bitset(original_pixel_value, 1, bit_to_hide);
+    end
+    
+end

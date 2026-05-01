@@ -1,0 +1,110 @@
+% --- تمرین کامپیوتری سوم - بخش دوم ---
+% اسکریپت ردیاب هواپیما (نسخه مبتنی بر حرکت)
+% 
+
+clear; clc; close all;
+
+% --- ۱. انتخاب ویدیو توسط کاربر ---
+[fileName, pathName] = uigetfile({'*.mp4';'*.avi';'*.mov';'*.mkv'}, 'Select the IR video file');
+if isequal(fileName, 0)
+    disp('User canceled the selection.');
+    return;
+end
+videoPath = fullfile(pathName, fileName);
+disp(['Loading video: ', videoPath]);
+
+% ایجاد آبجکت های مورد نیاز
+try
+    videoReader = VideoReader(videoPath);
+catch
+    error('Cannot read video file. Make sure you have the correct codecs.');
+end
+
+videoPlayer = vision.VideoPlayer('Name', 'Motion Tracker');
+
+% --- ۲. تعریف پارامترهای ردیابی ---
+% آستانه تفاوت بین فریم ها برای تشخیص حرکت
+MOTION_THRESHOLD = 15;  % (از 255)
+% حداقل مساحت برای یک شیء متحرک (برای حذف نویز)
+MIN_MOTION_AREA = 20; % 100 پیکسل
+
+% برای نویزگیری از "ماسک حرکت"
+se_noise = strel('rectangle', [3 3]); % برای حذف نویز
+se_group = strel('rectangle', [15 15]); % برای گروه بندی بخش های متحرک
+
+disp('Starting motion-based tracking...');
+
+% --- ۳. حلقه اصلی ردیابی (Detection-based) ---
+
+% خواندن فریم اول به عنوان مرجع
+if ~hasFrame(videoReader)
+    error('Video is empty.');
+end
+previousFrame = readFrame(videoReader);
+if size(previousFrame, 3) == 3
+    previousFrameGray = rgb2gray(previousFrame);
+else
+    previousFrameGray = previousFrame;
+end
+
+
+while hasFrame(videoReader)
+    % خواندن فریم جدید
+    currentFrame = readFrame(videoReader);
+    
+    if size(currentFrame, 3) == 3
+        currentFrameGray = rgb2gray(currentFrame);
+    else
+        currentFrameGray = currentFrame;
+    end
+    
+    % محاسبه تفاضل مطلق بین فریم ها
+    diffImage = abs(currentFrameGray - previousFrameGray);
+    
+    % آستانه گذاری: پیدا کردن پیکسل های با حرکت زیاد
+    motionMask = diffImage > MOTION_THRESHOLD;
+    
+    % تمیز کردن ماسک:
+    % ۱. حذف نویزهای کوچک (نقاط سفید)
+    cleanedMask = imopen(motionMask, se_noise);
+    % ۲. پر کردن فاصله ها و گروه بندی لکه های نزدیک
+    cleanedMask = imclose(cleanedMask, se_group);
+    
+    % پیدا کردن تمام "لکه ها" (اشیاء متحرک)
+    cc = bwconncomp(cleanedMask);
+    
+    bbox = []; % ریست کردن باکس
+    
+    if cc.NumObjects > 0
+        % استخراج مشخصات لکه ها (مساحت و باکس)
+        stats = regionprops(cc, 'Area', 'BoundingBox');
+        
+        % پیدا کردن بزرگترین لکه متحرک
+        [maxArea, maxIndex] = max([stats.Area]);
+        
+        % اگر بزرگترین لکه از حد نویز بزرگتر بود...
+        if maxArea > MIN_MOTION_AREA
+            % ... این شیء متحرک ما است!
+            bbox = stats(maxIndex).BoundingBox; % [x, y, w, h]
+        end
+    end
+    
+    % آماده سازی فریم خروجی
+    outputFrame = currentFrame;
+    
+    % اگر شیء متحرکی پیدا شد، باکس را رسم کن
+    if ~isempty(bbox)
+        % رسم باکس سبز 
+        outputFrame = insertShape(outputFrame, 'Rectangle', bbox, 'Color', 'green', 'LineWidth', 3);
+    end
+    
+    % نمایش فریم
+    step(videoPlayer, outputFrame);
+    
+    % آپدیت فریم قبلی برای حلقه بعدی
+    previousFrameGray = currentFrameGray;
+end
+
+% --- ۴. پاکسازی ---
+disp('Tracking finished.');
+release(videoPlayer);
