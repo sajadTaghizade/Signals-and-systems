@@ -1,4 +1,4 @@
-# 📡 Signals and Systems Lab Projects
+# 📡 Signals and Systems Projects
 
 Welcome to my **Signals and Systems** repository! This repository contains the MATLAB implementations for five comprehensive computer assignments from the Signals and Systems course. 
 
